@@ -70,22 +70,47 @@ pdm run uvicorn app.main:app --reload
 ### Project Structure
 ```
 backend/
-├── app/
-│   ├── api/
-│   │   ├── auth.py
-│   │   ├── courses.py
-│   │   └── progress.py
-│   ├── core/
-│   │   ├── config.py
-│   │   └── security.py
-│   ├── db/
-│   │   ├── models.py
-│   │   └── session.py
-│   └── main.py
+├── src/
+│   └── backend/
+│       ├── auth.py       # Authentication and authorization
+│       ├── crud.py       # Database CRUD operations
+│       ├── database.py   # Database connection and session management
+│       ├── main.py       # FastAPI application and routes
+│       ├── models.py     # SQLAlchemy models
+│       └── schemas.py    # Pydantic data models
 ├── tests/
-├── pdm.toml
+├── pyproject.toml
 └── README.md
 ```
+
+### Database Operations
+
+The `crud.py` module provides a clean interface for database operations:
+
+#### User Operations
+- `get_user(db, user_id)` - Get user by ID
+- `get_user_by_email(db, email)` - Get user by email
+- `get_users(db, skip, limit)` - Get paginated list of users
+
+#### Class Operations
+- `create_class(db, name, teacher_id, description)` - Create a new class
+- `get_class(db, class_id)` - Get class by ID
+- `get_teacher_classes(db, teacher_id)` - Get all classes for a teacher
+
+#### Course Operations
+- `create_course(db, name, class_id, created_by, description, structure)` - Create a new course
+- `get_course(db, course_id)` - Get course by ID
+- `get_class_courses(db, class_id)` - Get all courses in a class
+
+#### Lesson Operations
+- `create_lesson(db, course_id, title, order, structure)` - Create a new lesson
+- `get_lesson(db, lesson_id)` - Get lesson by ID
+- `get_course_lessons(db, course_id)` - Get ordered list of lessons in a course
+
+#### Progress Operations
+- `get_or_create_progress(db, student_id, lesson_id)` - Get or initialize progress record
+- `update_progress(db, progress_id, status)` - Update progress status
+- `get_student_progress(db, student_id, lesson_id)` - Get student's progress
 
 ### Adding Dependencies
 
