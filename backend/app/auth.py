@@ -1,26 +1,29 @@
 from typing import Optional
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, APIRouter
 from fastapi.security import OAuth2AuthorizationCodeBearer
 from jose import jwt, JWTError
 from pydantic import BaseModel
 from .database import get_session
 from sqlalchemy import select
 from .models import User
+import os
 
 class TokenData(BaseModel):
     email: Optional[str] = None
     sub: str
 
 class Auth0Settings:
-    """Auth0 settings - replace these with your Auth0 credentials"""
-    DOMAIN = "your-domain.auth0.com"
-    API_AUDIENCE = "your-api-identifier"
+    """Auth0 settings from environment variables"""
+    DOMAIN = os.getenv('AUTH0_DOMAIN', "dev-nq7fiiu78k55sryw.us.auth0.com")
+    API_AUDIENCE = os.getenv('AUTH0_API_AUDIENCE', "http://localhost:8000/api/v1")
     ALGORITHMS = ["RS256"]
     
 oauth2_scheme = OAuth2AuthorizationCodeBearer(
     authorizationUrl=f"https://{Auth0Settings.DOMAIN}/authorize",
     tokenUrl=f"https://{Auth0Settings.DOMAIN}/oauth/token"
 )
+
+router = APIRouter()
 
 async def get_current_user(token: str = Depends(oauth2_scheme), session = Depends(get_session)) -> User:
     credentials_exception = HTTPException(
@@ -68,3 +71,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme), session = Depend
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
     return current_user
+
+@router.get("/api/users/me")
+async def get_me(current_user: User = Depends(get_current_user)):
+    return {
+        "id": str(current_user.id),
+        "email": current_user.email,
+        "role": current_user.role
+    }

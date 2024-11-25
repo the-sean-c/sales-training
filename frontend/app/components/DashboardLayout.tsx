@@ -1,6 +1,5 @@
 'use client'
 
-import Navigation from './Navigation'
 import { useUser } from '@auth0/nextjs-auth0/client'
 
 export default function DashboardLayout({
@@ -20,7 +19,6 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navigation />
       <div className="container mx-auto px-4 py-8">
         {children}
       </div>

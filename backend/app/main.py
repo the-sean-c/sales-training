@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import init_db
+from .auth import router as auth_router
 
 app = FastAPI(title="Sales Training API")
 
@@ -12,6 +13,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include the auth router
+app.include_router(auth_router)
 
 @app.on_event("startup")
 async def startup_event():
