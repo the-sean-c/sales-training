@@ -10,7 +10,7 @@ export default function Home() {
             <a className="text-2xl font-bold text-primary">SalesTrainer</a>
           </div>
           <div className="flex-none">
-            <Link href="/auth/login" className="btn btn-primary">
+            <Link href="/api/auth/login" className="btn btn-primary">
               Sign In
             </Link>
           </div>
@@ -19,76 +19,46 @@ export default function Home() {
 
       {/* Hero Section */}
       <section className="container mx-auto px-4 py-24">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-          <div>
-            <h1 className="text-5xl font-bold mb-6">
-              Master the Art of Sales
-            </h1>
-            <p className="text-xl text-gray-600 mb-8">
-              Transform your sales team with our interactive training platform. 
-              Learn from expert-curated content, practice with AI-powered scenarios, 
-              and track progress in real-time.
-            </p>
-            <div className="space-x-4">
-              <Link href="/auth/register" className="btn btn-primary btn-lg">
-                Get Started
-              </Link>
-              <Link href="/about" className="btn btn-ghost btn-lg">
-                Learn More
-              </Link>
-            </div>
-          </div>
-          <div className="hidden md:block">
-            {/* Replace with your actual image */}
-            <div className="aspect-video bg-gray-100 rounded-lg shadow-lg"></div>
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-5xl font-bold mb-6">
+            Master the Art of Sales
+          </h1>
+          <p className="text-xl text-gray-600 mb-8">
+            Enhance your sales skills with our comprehensive training platform.
+            Learn from industry experts and track your progress.
+          </p>
+          <div className="flex justify-center gap-4">
+            <Link href="/api/auth/login" className="btn btn-primary btn-lg">
+              Get Started
+            </Link>
+            <Link href="#features" className="btn btn-ghost btn-lg">
+              Learn More
+            </Link>
           </div>
         </div>
       </section>
 
       {/* Features Section */}
-      <section className="bg-white py-24">
-        <div className="container mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center mb-12">
-            Why Choose SalesTrainer?
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                title: "Interactive Learning",
-                description: "Engage with real-world scenarios and AI-powered role-play exercises."
-              },
-              {
-                title: "Expert-Led Content",
-                description: "Learn from industry professionals with proven track records."
-              },
-              {
-                title: "Progress Tracking",
-                description: "Monitor your team's development with detailed analytics and insights."
-              }
-            ].map((feature, index) => (
-              <div key={index} className="card bg-base-100 shadow-xl">
-                <div className="card-body">
-                  <h3 className="card-title">{feature.title}</h3>
-                  <p>{feature.description}</p>
-                </div>
-              </div>
-            ))}
+      <section id="features" className="container mx-auto px-4 py-16">
+        <div className="grid md:grid-cols-3 gap-8">
+          <div className="card bg-base-100 shadow-xl">
+            <div className="card-body">
+              <h2 className="card-title">Interactive Learning</h2>
+              <p>Engage with real-world scenarios and practical exercises</p>
+            </div>
           </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="bg-primary text-white py-24">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold mb-6">
-            Ready to Transform Your Sales Team?
-          </h2>
-          <p className="text-xl mb-8 opacity-90">
-            Join thousands of professionals who have already elevated their sales game.
-          </p>
-          <Link href="/auth/register" className="btn btn-secondary btn-lg">
-            Start Your Journey
-          </Link>
+          <div className="card bg-base-100 shadow-xl">
+            <div className="card-body">
+              <h2 className="card-title">Expert Guidance</h2>
+              <p>Learn from experienced sales professionals and industry leaders</p>
+            </div>
+          </div>
+          <div className="card bg-base-100 shadow-xl">
+            <div className="card-body">
+              <h2 className="card-title">Progress Tracking</h2>
+              <p>Monitor your improvement with detailed analytics and feedback</p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -96,8 +66,10 @@ export default function Home() {
       <footer className="footer footer-center p-10 bg-base-200 text-base-content">
         <div>
           <p className="font-bold">
-            SalesTrainer © {new Date().getFullYear()} - All rights reserved
+            MyCompany <br/>
+            Professional Sales Training Since 2024
           </p>
+          <p>Copyright 2024 - All rights reserved</p>
         </div>
       </footer>
     </div>
