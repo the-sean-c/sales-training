@@ -1,6 +1,8 @@
 import { getSession } from '@auth0/nextjs-auth0';
 import { NextResponse } from 'next/server';
 
+// TODO: This only verifies admin role
+
 export async function GET() {
   try {
     const session = await getSession();

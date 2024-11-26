@@ -105,7 +105,8 @@ export default function Navigation() {
                 <Link href="/settings">Settings</Link>
               </li>
               <li>
-                <Link href="/api/auth/logout">Logout</Link>
+                {/* Bug in nextjs-auth0: must use a instead of Link for logout */}
+                <a href="/api/auth/logout">Logout</a>
               </li>
             </ul>
           </div>

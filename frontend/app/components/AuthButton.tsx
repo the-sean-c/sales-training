@@ -1,22 +1,31 @@
 'use client'
 
-import Link from 'next/link'
 import { useUser } from '@auth0/nextjs-auth0/client'
+import { useRouter } from 'next/navigation'
 
 export default function AuthButton() {
   const { user, isLoading } = useUser()
+  const router = useRouter()
+
+  const handleLogin = () => {
+    router.push('/api/auth/login')
+  }
+
+  const handleLogout = () => {
+    router.push('/api/auth/logout')
+  }
 
   if (isLoading) {
     return <button className="btn btn-primary loading">Loading...</button>
   }
 
   return user ? (
-    <Link href="/api/auth/logout" className="btn btn-primary">
+    <button onClick={handleLogout} className="btn btn-primary">
       Sign Out
-    </Link>
+    </button>
   ) : (
-    <Link href="/api/auth/login" className="btn btn-primary">
+    <button onClick={handleLogin} className="btn btn-primary">
       Sign In
-    </Link>
+    </button>
   )
 }
