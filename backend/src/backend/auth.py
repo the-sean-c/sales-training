@@ -1,279 +1,209 @@
-import os
 import logging
-import json
-from typing import Optional, Dict
-from uuid import UUID
+import os
+import time
+from typing import Dict, Optional, Tuple
+
 import httpx
-from urllib.parse import urljoin
-
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Security
-from fastapi.security import OAuth2PasswordBearer
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, Request
 from jose import JWTError, jwt
-from pydantic import BaseModel
-from sqlalchemy import select
 
-from .database import get_session
-from .models import User
+load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-class TokenData(BaseModel):
-    email: Optional[str] = None
-    sub: str
+AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
+API_AUDIENCE = os.getenv("AUTH0_AUDIENCE")
+ALGORITHMS = ["RS256"]
 
-class Auth0Settings:
-    """Auth0 settings from environment variables"""
-    DOMAIN = os.getenv("AUTH0_DOMAIN", "onedigital-ai-dev.us.auth0.com")
-    API_AUDIENCE = os.getenv("AUTH0_API_AUDIENCE", "http://localhost:8000/api/v1")
-    ISSUER = f"https://{DOMAIN}/"
-    ALGORITHMS = ["RS256"]
-    _JWKS = None
+logger.debug(f"Auth0 Domain: {AUTH0_DOMAIN}")
+logger.debug(f"API Audience: {API_AUDIENCE}")
 
-    @classmethod
-    async def get_jwks(cls) -> Dict:
-        """Fetch JWKS from Auth0"""
-        if cls._JWKS is None:
-            logger.info(f"Fetching JWKS from {cls.ISSUER}.well-known/jwks.json")
-            jwks_url = urljoin(cls.ISSUER, ".well-known/jwks.json")
-            async with httpx.AsyncClient() as client:
-                try:
-                    response = await client.get(jwks_url)
-                    response.raise_for_status()
-                    cls._JWKS = response.json()
-                    logger.info(f"Successfully fetched JWKS: {json.dumps(cls._JWKS, indent=2)}")
-                except Exception as e:
-                    logger.error(f"Error fetching JWKS: {str(e)}")
-                    raise HTTPException(
-                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                        detail="Unable to fetch authentication keys"
-                    )
-        return cls._JWKS
+app = FastAPI()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", scheme_name="JWT")
-router = APIRouter()
+# Cache for JWKS response (data, timestamp)
+jwks_cache: Optional[Tuple[Dict, float]] = None
+jwks_cache_ttl = 600  # 10 minutes
 
-def verify_scopes(required_scopes: list[str], token_scopes: str) -> bool:
-    """Verify that the token has all required scopes"""
-    if not token_scopes:
-        return False
-    token_scopes_list = token_scopes.split()
-    return all(scope in token_scopes_list for scope in required_scopes)
 
-async def get_current_user(
-    token: str = Depends(oauth2_scheme), session=Depends(get_session)
-) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+# Exception for Auth errors
+class AuthError(Exception):
+    def __init__(self, error: Dict, status_code: int):
+        self.error = error
+        self.status_code = status_code
 
+
+# FastAPI Exception handler for AuthError
+@app.exception_handler(AuthError)
+async def auth_exception_handler(request: Request, exc: AuthError):
+    return {"error": exc.error, "status_code": exc.status_code}
+
+
+# Dependency to extract the token from the Authorization header
+def get_token_auth_header(request: Request) -> str:
+    """Obtains the Access Token from the Authorization Header."""
+    auth = request.headers.get("Authorization")
+    if not auth:
+        raise AuthError(
+            {
+                "code": "authorization_header_missing",
+                "description": "Authorization header is expected",
+            },
+            401,
+        )
+
+    parts = auth.split()
+
+    if parts[0].lower() != "bearer":
+        raise AuthError(
+            {
+                "code": "invalid_header",
+                "description": "Authorization header must start with Bearer",
+            },
+            401,
+        )
+    elif len(parts) == 1:
+        raise AuthError(
+            {"code": "invalid_header", "description": "Token not found"}, 401
+        )
+    elif len(parts) > 2:
+        raise AuthError(
+            {
+                "code": "invalid_header",
+                "description": "Authorization header must be Bearer token",
+            },
+            401,
+        )
+
+    return parts[1]
+
+
+async def get_jwks():
+    """Fetch the JWKS from the Auth0 domain and cache it."""
+    global jwks_cache
     try:
-        logger.info("Received token for validation")
-        if not token:
-            logger.error("No token provided")
-            raise credentials_exception
-            
-        # Log first few characters of token for debugging
-        logger.info(f"Token preview: {token[:30]}...")
-        
-        logger.info("Decoding JWT token")
+        # Return cached JWKS if available and not expired
+        current_time = time.time()
+        if jwks_cache is not None:
+            cache_data, cache_time = jwks_cache
+            if current_time - cache_time < jwks_cache_ttl:
+                return cache_data
+
+        # Fetch new JWKS
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"https://{AUTH0_DOMAIN}/.well-known/jwks.json")
+            response.raise_for_status()
+            jwks_data = response.json()
+            jwks_cache = (jwks_data, current_time)
+            return jwks_data
+    except Exception as e:
+        logger.error(f"Failed to fetch JWKS: {str(e)}")
+        raise AuthError(
+            {"code": "jwks_error", "description": f"Failed to fetch JWKS: {str(e)}"},
+            500,
+        )
+
+
+# Validate the JWT token
+async def requires_auth(token: str = Depends(get_token_auth_header)) -> Dict:
+    """Determines if the Access Token is valid."""
+    try:
+        token = token.strip()  # Remove any whitespace
+        logger.debug("Token received for validation")
+
         try:
-            # First try to decode the token header without verification
             unverified_header = jwt.get_unverified_header(token)
-            logger.info(f"Token header: {unverified_header}")
-            
-            # Get the key id from the header
-            kid = unverified_header.get("kid")
-            if not kid:
-                logger.error("No 'kid' in token header")
-                raise credentials_exception
-
-            # Get the JWKS from Auth0
-            jwks = await Auth0Settings.get_jwks()
-            
-            # Find the right key
-            rsa_key = None
-            for key in jwks.get("keys", []):
-                if key.get("kid") == kid:
-                    rsa_key = {
-                        "kty": key["kty"],
-                        "kid": key["kid"],
-                        "n": key["n"],
-                        "e": key["e"]
-                    }
-                    break
-
-            if not rsa_key:
-                logger.error(f"No matching key found for kid: {kid}")
-                raise credentials_exception
-
-            logger.info("Verifying token signature")
-            payload = jwt.decode(
-                token,
-                rsa_key,
-                algorithms=Auth0Settings.ALGORITHMS,
-                audience=Auth0Settings.API_AUDIENCE,
-                issuer=Auth0Settings.ISSUER
-            )
-            logger.info(f"Token payload: {payload}")
-
-            # Verify required scopes
-            if not verify_scopes(['read:profile'], payload.get('scope', '')):
-                logger.error("Token missing required scopes")
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Insufficient permissions"
-                )
-
+            logger.debug(f"Unverified header: {unverified_header}")
         except JWTError as e:
-            logger.error(f"JWT validation error: {str(e)}")
-            raise credentials_exception
-        except Exception as e:
-            logger.error(f"Error decoding token: {str(e)}")
-            raise credentials_exception
+            logger.error(f"Failed to decode token header: {e}")
+            raise AuthError(
+                {
+                    "code": "invalid_header",
+                    "description": f"Invalid token header: {str(e)}",
+                },
+                401,
+            )
 
-        sub: str = payload.get("sub")
-        if not sub:
-            logger.error("No 'sub' claim in token")
-            raise credentials_exception
+        if not unverified_header.get("kid"):
+            logger.error(f"No 'kid' in token header: {unverified_header}")
+            raise AuthError(
+                {
+                    "code": "invalid_header",
+                    "description": "Token header is missing 'kid' claim",
+                    "unverified_header": unverified_header,
+                },
+                401,
+            )
 
-        token_data = TokenData(sub=sub, email=payload.get("email"))
-        logger.info(f"Token validated for user: {token_data.email}")
+        # Get JWKS
+        jwks = await get_jwks()
+        logger.debug("JWKS fetched successfully")
 
-    except Exception as e:
-        logger.error(f"Unexpected error during token validation: {str(e)}")
-        raise credentials_exception
-
-    # Get user from database
-    try:
-        logger.info(f"Looking up user with auth0_id: {token_data.sub}")
-        async with session as db:
-            result = await db.execute(select(User).where(User.auth0_id == token_data.sub))
-            user = result.scalar_one_or_none()
-
-            if user is None:
-                # Verify write:profile scope before creating new user
-                if not verify_scopes(['write:profile'], payload.get('scope', '')):
-                    logger.error("Token missing write:profile scope")
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Insufficient permissions to create profile"
-                    )
-
-                logger.info(f"Creating new user with email: {token_data.email}")
-                user = User(
-                    auth0_id=token_data.sub,
-                    email=token_data.email,
-                    role="student",  # Default role
-                )
-                db.add(user)
-                await db.commit()
-                await db.refresh(user)
-                logger.info(f"Created new user with ID: {user.id}")
-
-        return user
-    except Exception as e:
-        logger.error(f"Database error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred"
-        )
-
-async def get_current_active_user(
-    current_user: User = Depends(get_current_user),
-) -> User:
-    return current_user
-
-def get_admin_user(current_user: User = Security(get_current_user)) -> User:
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only administrators can perform this action",
-        )
-    return current_user
-
-@router.get("/api/users/me")
-async def get_me(current_user: User = Depends(get_current_user)):
-    return {
-        "id": str(current_user.id),
-        "email": current_user.email,
-        "role": current_user.role,
-    }
-
-@router.put("/api/users/{user_id}/role")
-async def update_user_role(
-    user_id: UUID,
-    role: str = Body(..., embed=True),
-    session=Depends(get_session),
-    admin_user: User = Depends(get_admin_user),
-    token: str = Depends(oauth2_scheme)
-):
-    """Update a user's role. Only administrators can perform this action."""
-    try:
-        # Decode token to check scopes
-        unverified_header = jwt.get_unverified_header(token)
-        kid = unverified_header.get("kid")
-        jwks = await Auth0Settings.get_jwks()
+        # Find the matching key
         rsa_key = None
         for key in jwks.get("keys", []):
-            if key.get("kid") == kid:
+            if key["kid"] == unverified_header["kid"]:
                 rsa_key = {
                     "kty": key["kty"],
                     "kid": key["kid"],
+                    "use": key["use"],
                     "n": key["n"],
-                    "e": key["e"]
+                    "e": key["e"],
                 }
                 break
 
-        payload = jwt.decode(
-            token,
-            rsa_key,
-            algorithms=Auth0Settings.ALGORITHMS,
-            audience=Auth0Settings.API_AUDIENCE,
-            issuer=Auth0Settings.ISSUER
-        )
-
-        # Verify write:roles scope
-        if not verify_scopes(['write:roles'], payload.get('scope', '')):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions to update roles"
+        if not rsa_key:
+            logger.error("No matching key found in JWKS")
+            raise AuthError(
+                {
+                    "code": "invalid_key",
+                    "description": "Unable to find appropriate key",
+                },
+                401,
             )
 
-        if role not in ["admin", "teacher", "student"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid role. Must be one of: admin, teacher, student",
+        try:
+            logger.debug("Attempting to decode token")
+            # Verify the token
+            payload = jwt.decode(
+                token,
+                rsa_key,
+                algorithms=ALGORITHMS,
+                audience=API_AUDIENCE,
+                issuer=f"https://{AUTH0_DOMAIN}/",
             )
-        
-        async with session as db:
-            result = await db.execute(select(User).where(User.id == user_id))
-            user = result.scalar_one_or_none()
-            
-            if not user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found",
-                )
-                
-            user.role = role
-            await db.commit()
-            await db.refresh(user)
-            
-        return {"id": str(user.id), "email": user.email, "role": user.role}
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials"
-        )
-    except HTTPException:
+            logger.debug("Token decoded successfully")
+            return payload
+
+        except jwt.ExpiredSignatureError as e:
+            logger.error(f"Token expired: {e}")
+            raise AuthError(
+                {"code": "token_expired", "description": "Token has expired"},
+                401,
+            )
+        except jwt.JWTClaimsError as e:
+            logger.error(f"Invalid claims: {e}")
+            raise AuthError(
+                {"code": "invalid_claims", "description": f"Invalid claims: {str(e)}"},
+                401,
+            )
+        except Exception as e:
+            logger.error(f"Failed to decode token: {e}")
+            raise AuthError(
+                {"code": "invalid_token", "description": f"Invalid token: {str(e)}"},
+                401,
+            )
+
+    except AuthError:
         raise
     except Exception as e:
-        logger.error(f"Error updating user role: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while updating the role"
+        logger.error(f"Unexpected error in auth: {e}")
+        raise AuthError(
+            {
+                "code": "invalid_token",
+                "description": f"Unable to parse authentication token: {str(e)}",
+            },
+            401,
         )

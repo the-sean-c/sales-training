@@ -42,7 +42,7 @@ AUTH0_API_AUDIENCE=your-api-audience
 
 1. Start the development server:
 ```bash
-pdm run uvicorn app.main:app --reload
+pdm run uvicorn backend.main:app --reload
 ```
 
 2. The API will be available at `http://localhost:8000`
