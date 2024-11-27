@@ -46,15 +46,15 @@ async def get_current_user_info(
         logger.debug(f"User info from Auth0: {user_info}")
 
         # Get user from database based on Auth0 ID
-        auth0_id = token.get("sub")
+        auth_id = token.get("sub")
         email = user_info.get("email")
-        logger.debug(f"Looking up user with auth0_id: {auth0_id}, email: {email}")
+        logger.debug(f"Looking up user with auth_id: {auth_id}, email: {email}")
 
-        result = await session.execute(select(User).where(User.auth0_id == auth0_id))
+        result = await session.execute(select(User).where(User.auth_id == auth_id))
         user = result.scalar_one_or_none()
 
         if not user:
-            logger.debug(f"Creating new user for auth0_id: {auth0_id}")
+            logger.debug(f"Creating new user for auth_id: {auth_id}")
             if not email:
                 logger.error("No email found in user info!")
                 raise HTTPException(
@@ -64,7 +64,7 @@ async def get_current_user_info(
 
             # Create new user if not exists
             user = User(
-                auth0_id=auth0_id,
+                auth_id=auth_id,
                 email=email,
                 role="student",  # Default role for new users
             )
@@ -83,10 +83,10 @@ async def get_all_users(
     token: dict = Depends(requires_auth), session: AsyncSession = Depends(get_session)
 ):
     try:
-        auth0_id = token.get("sub")
+        auth_id = token.get("sub")
 
         # Get the user's role from our database
-        result = await session.execute(select(User).where(User.auth0_id == auth0_id))
+        result = await session.execute(select(User).where(User.auth_id == auth_id))
         user = result.scalar_one_or_none()
 
         if not user or user.role != "admin":
@@ -102,7 +102,7 @@ async def get_all_users(
         return [
             {
                 "id": str(user.id),
-                "sub": user.auth0_id,  # Needed for role management
+                "sub": user.auth_id,  # Needed for role management
                 "email": user.email,
                 "role": user.role,
             }
