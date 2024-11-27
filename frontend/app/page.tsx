@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import AuthButton from '@/components/AuthButton'
 
 export default function Home() {
   return (
@@ -10,9 +11,7 @@ export default function Home() {
             <a className="text-2xl font-bold text-primary">SalesTrainer</a>
           </div>
           <div className="flex-none">
-            <Link href="/api/auth/login" className="btn btn-primary">
-              Sign In
-            </Link>
+            <AuthButton />
           </div>
         </div>
       </nav>
@@ -28,12 +27,12 @@ export default function Home() {
             Learn from industry experts and track your progress.
           </p>
           <div className="flex justify-center gap-4">
-            <Link href="/api/auth/login" className="btn btn-primary btn-lg">
+            <a href="/api/auth/login" className="btn btn-primary btn-lg">
               Get Started
-            </Link>
-            <Link href="#features" className="btn btn-ghost btn-lg">
+            </a>
+            <a href="#features" className="btn btn-ghost btn-lg">
               Learn More
-            </Link>
+            </a>
           </div>
         </div>
       </section>

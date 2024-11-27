@@ -37,7 +37,7 @@ export default function Drawer({ children }: { children: React.ReactNode }) {
         try {
           const response = await fetch('/api/auth/me')
           const data = await response.json()
-          setUserRole(data.user.role || 'student')
+          setUserRole(data.role || 'student')
         } catch (error) {
           console.error('Error fetching user role:', error)
           setUserRole('student')
