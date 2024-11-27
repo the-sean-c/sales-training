@@ -27,6 +27,10 @@ app = FastAPI()
 jwks_cache: Optional[Tuple[Dict, float]] = None
 jwks_cache_ttl = 600  # 10 minutes
 
+# Cache for user info (dict of sub -> (data, timestamp))
+user_info_cache: Dict[str, Tuple[Dict, float]] = {}
+user_info_cache_ttl = 300  # 5 minutes
+
 
 # Exception for Auth errors
 class AuthError(Exception):
@@ -106,6 +110,89 @@ async def get_jwks():
         )
 
 
+async def get_user_info(token: Dict) -> Dict:
+    """Fetch user info from Auth0's userinfo endpoint with caching."""
+    try:
+        sub = token.get("sub")
+        if not sub:
+            raise AuthError(
+                {
+                    "code": "invalid_token",
+                    "description": "No sub claim found in token",
+                },
+                401,
+            )
+
+        # Check cache first
+        current_time = time.time()
+        if sub in user_info_cache:
+            cached_info, timestamp = user_info_cache[sub]
+            if current_time - timestamp < user_info_cache_ttl:
+                logger.debug("Returning cached user info")
+                return cached_info
+
+        # Get the raw token from the Authorization header
+        raw_token = token.get("raw_token")
+        if not raw_token:
+            logger.error("No raw token found in token dict")
+            raise AuthError(
+                {
+                    "code": "invalid_token",
+                    "description": "No raw token found for userinfo request",
+                },
+                401,
+            )
+
+        # Fetch user info from Auth0
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://{AUTH0_DOMAIN}/userinfo",
+                headers={"Authorization": f"Bearer {raw_token}"},
+            )
+
+            if response.status_code == 200:
+                user_info = response.json()
+                logger.debug(f"User info fetched successfully: {user_info}")
+                # Cache the result
+                user_info_cache[sub] = (user_info, current_time)
+                return user_info
+            elif response.status_code == 429:  # Rate limit hit
+                # Try to use cached data even if expired
+                if sub in user_info_cache:
+                    logger.warning("Rate limit hit, using expired cache data")
+                    return user_info_cache[sub][0]
+                else:
+                    logger.error(
+                        f"Rate limit hit and no cache available: {response.text}"
+                    )
+                    raise AuthError(
+                        {
+                            "code": "rate_limit",
+                            "description": "Rate limit exceeded and no cached data available",
+                        },
+                        429,
+                    )
+            else:
+                logger.error(f"Failed to fetch user info: {response.text}")
+                raise AuthError(
+                    {
+                        "code": "userinfo_error",
+                        "description": f"Failed to fetch user info: {response.text}",
+                    },
+                    response.status_code,
+                )
+
+    except Exception as e:
+        logger.error(f"Error fetching user info: {str(e)}")
+        raise AuthError(
+            {
+                "code": "userinfo_error",
+                "description": f"Error fetching user info: {str(e)}",
+            },
+            500,
+        )
+
+
 # Validate the JWT token
 async def requires_auth(token: str = Depends(get_token_auth_header)) -> Dict:
     """Determines if the Access Token is valid."""
@@ -116,6 +203,7 @@ async def requires_auth(token: str = Depends(get_token_auth_header)) -> Dict:
         try:
             unverified_header = jwt.get_unverified_header(token)
             logger.debug(f"Unverified header: {unverified_header}")
+
         except JWTError as e:
             logger.error(f"Failed to decode token header: {e}")
             raise AuthError(
@@ -175,6 +263,8 @@ async def requires_auth(token: str = Depends(get_token_auth_header)) -> Dict:
                 issuer=f"https://{AUTH0_DOMAIN}/",
             )
             logger.debug("Token decoded successfully")
+            # Store the raw token for userinfo requests
+            payload["raw_token"] = token
             return payload
 
         except jwt.ExpiredSignatureError as e:
