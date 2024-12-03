@@ -1,9 +1,13 @@
+# ruff: noqa: E501
+
 import uuid
 from datetime import datetime
 
 from sqlalchemy import JSON, Column, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
+
+from backend.enums import UserRole
 
 Base = declarative_base()
 
@@ -22,19 +26,17 @@ class User(Base, TimestampMixin):
     __tablename__ = "users"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    auth_id = Column(String, unique=True, nullable=False)
+    sub = Column(String, unique=True, nullable=False)
     email = Column(String, unique=True, nullable=False)
-    role = Column(
-        Enum("admin", "teacher", "student", name="user_roles"), nullable=False
-    )
+    role = Column(Enum(UserRole, name="user_roles"), nullable=False)
 
     # Relationships
-    taught_classes = relationship("Class", back_populates="teacher")
-    enrollments = relationship("ClassEnrollment", back_populates="student")
+    taught_cohorts = relationship("Cohort", back_populates="teacher")
+    enrollments = relationship("CohortEnrollment", back_populates="student")
 
 
-class Class(Base, TimestampMixin):
-    __tablename__ = "classes"
+class Cohort(Base, TimestampMixin):
+    __tablename__ = "cohorts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
@@ -42,22 +44,22 @@ class Class(Base, TimestampMixin):
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     # Relationships
-    teacher = relationship("User", back_populates="taught_classes")
-    enrollments = relationship("ClassEnrollment", back_populates="class_")
-    courses = relationship("Course", back_populates="class_")
+    teacher = relationship("User", back_populates="taught_cohorts")
+    enrollments = relationship("CohortEnrollment", back_populates="cohort")
+    courses = relationship("Course", back_populates="cohort")
 
 
-class ClassEnrollment(Base, TimestampMixin):
-    __tablename__ = "class_enrollments"
+class CohortEnrollment(Base, TimestampMixin):
+    __tablename__ = "cohort_enrollments"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=False)
+    cohort_id = Column(UUID(as_uuid=True), ForeignKey("cohorts.id"), nullable=False)
     student_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     status = Column(Enum("active", "completed", "dropped", name="enrollment_status"))
     enrolled_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    class_ = relationship("Class", back_populates="enrollments")
+    cohort = relationship("Cohort", back_populates="enrollments")
     student = relationship("User", back_populates="enrollments")
 
 
@@ -65,14 +67,14 @@ class Course(Base, TimestampMixin):
     __tablename__ = "courses"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=False)
+    cohort_id = Column(UUID(as_uuid=True), ForeignKey("cohorts.id"), nullable=False)
     name = Column(String, nullable=False)
     description = Column(String)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     structure = Column(JSON)
 
     # Relationships
-    class_ = relationship("Class", back_populates="courses")
+    cohort = relationship("Cohort", back_populates="courses")
     lessons = relationship("Lesson", back_populates="course")
 
 

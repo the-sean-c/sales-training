@@ -5,8 +5,13 @@ from typing import Dict, Optional, Tuple
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from jose import JWTError, jwt
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.database import get_db_session
+from backend.models import User, UserRole
 
 load_dotenv()
 
@@ -297,3 +302,20 @@ async def requires_auth(token: str = Depends(get_token_auth_header)) -> Dict:
             },
             401,
         )
+
+
+async def user_has_access_rights(
+    token: dict,
+    allowed_roles: list[UserRole],
+    session: AsyncSession = Depends(get_db_session),
+) -> bool:
+    """Check if the user has the required access permissions."""
+    sub = token.get("sub")
+
+    result = await session.execute(select(User).where(User.sub == sub))
+    user = result.scalar_one_or_none()
+
+    if not user or user.role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Insufficient permissions.")
+
+    return True

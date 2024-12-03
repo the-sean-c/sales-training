@@ -1,179 +1,123 @@
+# src/backend/schemas.py
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from uuid import UUID
-from pydantic import BaseModel, EmailStr
-from enum import Enum
+from typing import List, Optional
 
-class UserRole(str, Enum):
-    admin = "admin"
-    teacher = "teacher"
-    student = "student"
+from pydantic import UUID4, BaseModel, EmailStr, Field
 
-class EnrollmentStatus(str, Enum):
-    active = "active"
-    completed = "completed"
-    dropped = "dropped"
+from backend.enums import UserRole
+from backend.models import Lesson, User
 
-class ContentType(str, Enum):
-    video = "video"
-    text = "text"
-    image = "image"
-    interactive = "interactive"
 
-class ProgressStatus(str, Enum):
-    not_started = "not_started"
-    in_progress = "in_progress"
-    completed = "completed"
-
-# Base schemas for creating/updating
 class UserBase(BaseModel):
-    email: EmailStr
-    role: UserRole
+    sub: str = Field(
+        description="OAuth2/OIDC subject identifier that uniquely identifies the user"
+    )
+    email: EmailStr = Field(description="Email address of the user")
+    role: UserRole = Field(description="Role of the user", example=UserRole.student)
+
+    def to_orm(self):
+        return User(**self.model_dump())
+
+    class Config:
+        from_attributes = True
+
 
 class UserCreate(UserBase):
-    auth0_id: str
-
-class UserUpdate(UserBase):
     pass
 
-class ClassBase(BaseModel):
-    name: str
-    description: Optional[str] = None
 
-class ClassCreate(ClassBase):
-    teacher_id: UUID
+class UserRead(UserBase):
+    id: UUID4 = Field(description="Unique identifier for the user")
+    sub: str = Field(
+        description="OAuth2/OIDC subject identifier that uniquely identifies the user"
+    )
 
-class ClassUpdate(ClassBase):
-    pass
+    class Config:
+        from_attributes = True
 
-class ClassEnrollmentBase(BaseModel):
-    class_id: UUID
-    student_id: UUID
-    status: EnrollmentStatus
 
-class ClassEnrollmentCreate(ClassEnrollmentBase):
-    pass
+class UserUpdate(BaseModel):
+    id: str | None = Field(None, description="Unique identifier for the user")
+    sub: str | None = Field(
+        None,
+        description="OAuth2/OIDC subject identifier that uniquely identifies the user",
+    )
+    email: EmailStr | None = Field(None, description="Email address of the user")
+    role: UserRole | None = Field(
+        None, description="Role of the user", example=UserRole.student
+    )
 
-class ClassEnrollmentUpdate(BaseModel):
-    status: EnrollmentStatus
+    def to_orm(self, db_obj: User):
+        update_data = self.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(db_obj, key, value)
+        return db_obj
 
-class CourseBase(BaseModel):
-    name: str
-    description: Optional[str] = None
-    structure: Optional[Dict[str, Any]] = None
+    class Config:
+        orm_mode = True
 
-class CourseCreate(CourseBase):
-    class_id: UUID
-    created_by: UUID
-
-class CourseUpdate(CourseBase):
-    pass
 
 class LessonBase(BaseModel):
     title: str
+    description: str
     order: int
-    structure: Optional[Dict[str, Any]] = None
+    content: str
+
+    def to_orm(self):
+        return Lesson(**self.model_dump())
+
 
 class LessonCreate(LessonBase):
-    course_id: UUID
-
-class LessonUpdate(LessonBase):
     pass
 
-class ContentBlockBase(BaseModel):
-    order: int
-    type: ContentType
-    content: Dict[str, Any]
 
-class ContentBlockCreate(ContentBlockBase):
-    lesson_id: UUID
+class LessonUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    order: Optional[int] = None
+    content: Optional[str] = None
 
-class ContentBlockUpdate(ContentBlockBase):
+
+class LessonRead(LessonBase):
+    id: UUID4
+    course_id: UUID4
+    created_at: datetime
+    last_modified: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CourseBase(BaseModel):
+    title: str = Field(description="Title of the course")
+    description: str = Field(description="Description of the course")
+    objectives: List[str] = Field(
+        default_factory=list, description="List of course objectives"
+    )
+    isDraft: bool = Field(
+        default=True, description="Whether the course is in draft state"
+    )
+
+    class Config:
+        from_attributes = True
+
+
+class CourseCreate(CourseBase):
     pass
 
-class ProgressBase(BaseModel):
-    student_id: UUID
-    lesson_id: UUID
-    status: ProgressStatus
-    completed_at: Optional[datetime] = None
 
-class ProgressCreate(ProgressBase):
-    pass
+class CourseUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    objectives: Optional[List[str]] = None
+    isDraft: Optional[bool] = None
 
-class ProgressUpdate(BaseModel):
-    status: ProgressStatus
-    completed_at: Optional[datetime] = None
 
-# Response schemas that include relationships and additional fields
-class UserResponse(UserBase):
-    id: UUID
-    auth0_id: str
+class CourseRead(CourseBase):
+    id: UUID4
     created_at: datetime
+    last_modified: datetime
+    lessons: List[LessonRead] = []
 
     class Config:
         from_attributes = True
-
-class ClassResponse(ClassBase):
-    id: UUID
-    teacher_id: UUID
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-class ClassEnrollmentResponse(ClassEnrollmentBase):
-    id: UUID
-    enrolled_at: datetime
-
-    class Config:
-        from_attributes = True
-
-class CourseResponse(CourseBase):
-    id: UUID
-    class_id: UUID
-    created_by: UUID
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-class LessonResponse(LessonBase):
-    id: UUID
-    course_id: UUID
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-class ContentBlockResponse(ContentBlockBase):
-    id: UUID
-    lesson_id: UUID
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-class ProgressResponse(ProgressBase):
-    id: UUID
-
-    class Config:
-        from_attributes = True
-
-# Extended response schemas with nested relationships
-class UserDetailResponse(UserResponse):
-    taught_classes: List[ClassResponse] = []
-    enrollments: List[ClassEnrollmentResponse] = []
-
-class ClassDetailResponse(ClassResponse):
-    teacher: UserResponse
-    enrollments: List[ClassEnrollmentResponse] = []
-    courses: List[CourseResponse] = []
-
-class CourseDetailResponse(CourseResponse):
-    class_: ClassResponse
-    lessons: List[LessonResponse] = []
-
-class LessonDetailResponse(LessonResponse):
-    course: CourseResponse
-    content_blocks: List[ContentBlockResponse] = []
-    progress_records: List[ProgressResponse] = []
