@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
+import { useEffect, useState } from 'react';
 
 interface User {
   email: string;
@@ -10,28 +10,36 @@ interface User {
 }
 
 export default function RoleManagement() {
-  const { user, isLoading } = useUser();
+  const { user: currentUser, isLoading } = useUser();
   const [users, setUsers] = useState<User[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const checkAdminStatus = async () => {
-      const response = await fetch('/api/auth/me');
-      const data = await response.json();
-      setIsAdmin(data.role === 'admin');
+      try {
+        const response = await fetch('/api/auth/me');
+        const data = await response.json();
+        setIsAdmin(data.role === 'admin');
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+      }
     };
 
     const fetchUsers = async () => {
-      const response = await fetch('/api/users');
-      const data = await response.json();
-      setUsers(data);
+      try {
+        const response = await fetch('/api/users');
+        const data = await response.json();
+        setUsers(data);
+      } catch (error) {
+        console.error('Error fetching users:', error);
+      }
     };
 
-    if (user) {
+    if (currentUser) {
       checkAdminStatus();
       fetchUsers();
     }
-  }, [user]);
+  }, [currentUser]);
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     try {
@@ -43,18 +51,22 @@ export default function RoleManagement() {
         body: JSON.stringify({ userId, role: newRole }),
       });
 
-      if (response.ok) {
-        setUsers(users.map(u => 
-          u.sub === userId ? { ...u, role: newRole } : u
-        ));
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Error updating role:', error);
+        return;
       }
+
+      setUsers(users.map(u => 
+        u.sub === userId ? { ...u, role: newRole } : u
+      ));
     } catch (error) {
       console.error('Error updating role:', error);
     }
   };
 
   if (isLoading) return <div className="p-8">Loading...</div>;
-  if (!user) return <div className="p-8">Please log in to access this page.</div>;
+  if (!currentUser) return <div className="p-8">Please log in to access this page.</div>;
   if (!isAdmin) return <div className="p-8">Access denied. Admin privileges required.</div>;
 
   return (

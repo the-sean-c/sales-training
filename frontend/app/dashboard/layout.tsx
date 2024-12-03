@@ -3,7 +3,7 @@
 import Navbar from "@/components/Navbar";
 import Drawer from "@/components/Drawer";
 
-export default function AuthenticatedLayout({
+export default function Layout({
   children,
 }: {
   children: React.ReactNode;

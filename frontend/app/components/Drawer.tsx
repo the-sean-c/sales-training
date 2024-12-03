@@ -7,48 +7,71 @@ import { usePathname } from 'next/navigation'
 
 const roleBasedLinks = {
   admin: [
-    { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
-    { href: '/admin/users', label: 'Users', icon: '👥' },
-    { href: '/admin/organizations', label: 'Organizations', icon: '🏢' },
-    { href: '/admin/analytics', label: 'Analytics', icon: '📊' },
-    { href: '/admin/role-management', label: 'Role Management', icon: '🔑' },
+    { href: '/dashboard/admin', label: 'Dashboard', icon: '🏠' },
+    { href: '/dashboard/admin/user-roles', label: 'User Roles', icon: '👤' },
+    { href: '/dashboard/admin/teams', label: 'Teams', icon: '👥' },
+    { href: '/dashboard/admin/analytics', label: 'Analytics', icon: '📊' },
   ],
   teacher: [
-    { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
-    { href: '/courses', label: 'Courses', icon: '📚' },
-    { href: '/classes', label: 'Classes', icon: '👨‍🏫' },
-    { href: '/analytics', label: 'Analytics', icon: '📊' },
+    { href: '/dashboard/teacher', label: 'Dashboard', icon: '🏠' },
+    { href: '/dashboard/teacher/courses', label: 'Courses', icon: '📚' },
+    { href: '/dashboard/teacher/cohorts', label: 'Cohorts', icon: '👨‍🏫' },
+    { href: '/dashboard/teacher/analytics', label: 'Analytics', icon: '📊' },
   ],
   student: [
-    { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
-    { href: '/my-courses', label: 'My Courses', icon: '📚' },
-    { href: '/progress', label: 'Progress', icon: '📈' },
+    { href: '/dashboard/student', label: 'Dashboard', icon: '🏠' },
+    { href: '/dashboard/student/my-courses', label: 'My Courses', icon: '📚' },
+    { href: '/dashboard/student/my-progress', label: 'My Progress', icon: '📈' },
   ],
 }
 
 export default function Drawer({ children }: { children: React.ReactNode }) {
   const { user } = useUser()
   const pathname = usePathname()
-  const [userRole, setUserRole] = useState('student')
+  const [sessionRole, setSessionRole] = useState<string>('student')
+  const [isLoading, setIsLoading] = useState(true)
   
   useEffect(() => {
-    const fetchUserRole = async () => {
+    const fetchSessionRole = async () => {
       if (user) {
         try {
-          const response = await fetch('/api/auth/me')
-          const data = await response.json()
-          setUserRole(data.role || 'student')
+          const response = await fetch('/api/auth/role')
+          if (response.ok) {
+            const data = await response.json()
+            setSessionRole(data.sessionRole || 'student')
+          }
         } catch (error) {
-          console.error('Error fetching user role:', error)
-          setUserRole('student')
+          console.error('Error fetching session role:', error)
+          setSessionRole('student')
+        } finally {
+          setIsLoading(false)
         }
       }
     }
     
-    fetchUserRole()
+    fetchSessionRole()
   }, [user])
 
-  const links = roleBasedLinks[userRole as keyof typeof roleBasedLinks]
+  const links = roleBasedLinks[sessionRole as keyof typeof roleBasedLinks]
+
+  if (isLoading) {
+    return (
+      <div className="drawer lg:drawer-open">
+        <input id="main-drawer" type="checkbox" className="drawer-toggle" />
+        <div className="drawer-content flex flex-col">
+          {children}
+        </div>
+        <div className="drawer-side">
+          <label htmlFor="main-drawer" aria-label="close sidebar" className="drawer-overlay"></label>
+          <ul className="menu p-4 w-80 min-h-full bg-base-200 text-base-content">
+            <li>
+              <div className="loading loading-spinner loading-md"></div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="drawer lg:drawer-open">

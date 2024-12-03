@@ -1,11 +1,12 @@
-import { getSession } from '@auth0/nextjs-auth0';
+import { withApiAuthRequired, getSession } from '@auth0/nextjs-auth0';
 import { NextResponse } from 'next/server';
 
-// TODO: This only verifies admin role
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-export async function GET() {
+export const GET= withApiAuthRequired(async function statsRoute(req) {
   try {
-    const session = await getSession();
+    const res = new NextResponse();
+    const session = await getSession(req, res);
     
     if (!session?.user) {
       return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
@@ -14,7 +15,7 @@ export async function GET() {
     }
 
     // Verify admin role
-    const userResponse = await fetch('http://localhost:8000/api/users/me', {
+    const userResponse = await fetch(`${API_URL}/api/v1/users/me`, {
       headers: {
         'Authorization': `Bearer ${session.accessToken}`
       }
@@ -28,7 +29,7 @@ export async function GET() {
     }
 
     // Get all users from the backend
-    const response = await fetch('http://localhost:8000/api/users', {
+    const response = await fetch(`${API_URL}/api/v1/users/all`, {
       headers: {
         'Authorization': `Bearer ${session.accessToken}`
       }
@@ -43,3 +44,4 @@ export async function GET() {
     });
   }
 }
+)
